@@ -1,0 +1,4 @@
+# 统一行尾：仓库内一律 LF（fpk 的 shell 脚本在 Linux 上必须为 LF）
+* text=auto eol=lf
+*.png binary
+*.fpk binary

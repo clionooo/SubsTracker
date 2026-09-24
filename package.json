@@ -1,0 +1,21 @@
+{
+  "name": "substracker",
+  "version": "1.0.0",
+  "description": "SubsTracker - 订阅管理与提醒系统（本地自部署版，移植自 mangguo02/sub，MIT）",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "subscription",
+    "reminder",
+    "lunar-calendar",
+    "nas",
+    "self-hosted"
+  ],
+  "license": "MIT"
+}

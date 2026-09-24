@@ -1,0 +1,14 @@
+services:
+  substracker:
+    build: .
+    image: substracker:latest
+    container_name: substracker
+    restart: unless-stopped
+    ports:
+      - "3000:3000"        # 左边改为你想用的端口
+    environment:
+      - TZ=Asia/Shanghai                       # 容器时区（影响定时任务触发时间）
+      - CRON=0 8 * * *                         # 每日提醒时间（本地时区 08:00），支持多个用分号分隔
+      - PWA_INJECT=1                           # 注入 iOS 添加到主屏幕支持，0 关闭
+    volumes:
+      - ./data:/app/data                       # 订阅数据与配置持久化到本地

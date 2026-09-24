@@ -1,0 +1,15 @@
+appname=substracker
+version=1.1.1
+display_name=SubsTracker
+desc=订阅管理与提醒系统（本地版）。跟踪各类订阅服务到期时间，支持 Telegram、Bark、企业微信、Webhook、邮件等多渠道到期提醒，内置农历显示。数据全部保存在本机，兼容 iOS 添加到主屏幕。<br><br>默认账号：admin / password，安装后请立即修改。
+platform=x86
+source=thirdparty
+maintainer=SubsTracker
+distributor=SubsTracker
+service_port=36789
+checkport=true
+os_min_version=0.9.0
+desktop_uidir=ui
+desktop_applaunchname=substracker.main
+ctl_stop=true
+changelog=优化：修正仪表盘说明文案；安装向导不再需要填写触发时间，日常提醒自动按设置时间分钟级推送

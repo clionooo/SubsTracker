@@ -1,0 +1,11 @@
+#!/bin/bash
+# 安装后回调：写入默认环境（安装向导无需用户填写，日常提醒由网页端分钟级调度）
+# CRON 仅控制订阅到期检查（默认每天 8:00）
+VAR_DIR="${TRIM_PKGVAR}"
+mkdir -p "${VAR_DIR}"
+
+CRON_VALUE="${wizard_cron:-0 8 * * *}"
+cat > "${VAR_DIR}/appenv" <<EOF
+CRON='${CRON_VALUE}'
+EOF
+exit 0

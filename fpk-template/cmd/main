@@ -1,0 +1,99 @@
+#!/bin/bash
+# SubsTracker 启停与状态检查
+# 运行时优先级：node -> bun（fnOS 应用中心的 bunjs）-> 报错提示
+# 应用目录：fpk 中 app/ 的内容在安装后直接映射到 TRIM_APPDEST 根目录
+APP_DIR="${TRIM_APPDEST}"
+VAR_DIR="${TRIM_PKGVAR}"
+PID_FILE="${VAR_DIR}/app.pid"
+LOG_FILE="${VAR_DIR}/app.log"
+ENV_FILE="${VAR_DIR}/appenv"
+PORT="${TRIM_SERVICE_PORT:-36789}"
+
+load_env() {
+    if [ -f "${ENV_FILE}" ]; then
+        # shellcheck disable=SC1090
+        . "${ENV_FILE}"
+    fi
+}
+
+# 查找可用的 JS 运行时
+find_runtime() {
+    if command -v node >/dev/null 2>&1; then
+        command -v node
+        return 0
+    fi
+    for p in /vol1/@appcenter/bunjs/bin/bun /vol1/@appcenter/bun/bin/bun /usr/local/bin/bun /usr/bin/bun; do
+        if [ -x "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+    if command -v bun >/dev/null 2>&1; then
+        command -v bun
+        return 0
+    fi
+    return 1
+}
+
+is_running() {
+    if [ -f "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    return 1
+}
+
+case "$1" in
+start)
+    if is_running; then
+        exit 0
+    fi
+    mkdir -p "${VAR_DIR}"
+    RUNTIME=$(find_runtime)
+    if [ -z "${RUNTIME}" ]; then
+        echo "未找到可用的 JS 运行时。请先在 fnOS 应用中心安装 Bun(应用名 bunjs) 或 Node.js 后再启动 SubsTracker。" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+    load_env
+    cd "${APP_DIR}" || { echo "应用目录不存在: ${APP_DIR}" > "${TRIM_TEMP_LOGFILE}"; exit 1; }
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - 使用运行时: ${RUNTIME}, 端口: ${PORT}" >> "${LOG_FILE}"
+    DATA_DIR="${VAR_DIR}" PORT="${PORT}" HOST=0.0.0.0 TZ="${TZ:-Asia/Shanghai}" \
+        "${RUNTIME}" src/server.js >> "${LOG_FILE}" 2>&1 &
+    printf "%s" "$!" > "${PID_FILE}"
+    sleep 3
+    if ! is_running; then
+        echo "SubsTracker 启动失败，请查看日志: ${LOG_FILE}" > "${TRIM_TEMP_LOGFILE}"
+        exit 1
+    fi
+    exit 0
+    ;;
+stop)
+    if is_running; then
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        kill -TERM "${pid}" 2>/dev/null
+        count=0
+        while kill -0 "${pid}" 2>/dev/null && [ $count -lt 10 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+        if kill -0 "${pid}" 2>/dev/null; then
+            kill -KILL "${pid}" 2>/dev/null
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    exit 0
+    ;;
+status)
+    if is_running; then
+        exit 0
+    fi
+    exit 3
+    ;;
+*)
+    exit 1
+    ;;
+esac

@@ -1,0 +1,12 @@
+{
+    "data-share": {
+        "shares": [
+            {
+                "name": "substracker-data",
+                "permission": {
+                    "rw": ["substracker"]
+                }
+            }
+        ]
+    }
+}
