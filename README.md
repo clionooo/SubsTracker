@@ -40,7 +40,7 @@ npm start
 
 ### 方式三：飞牛 fnOS NAS
 
-**直接安装预编译包（最简单）**：下载仓库 `release/` 目录下的 `substracker-v1.1.1.fpk`，在 fnOS 应用中心 → 手动安装 → 选择该文件即可。安装后桌面生成图标，访问端口 `36789`，默认账号 `admin` / `password`。运行时自动探测 Node 或 Bun（fnOS 应用中心的 bunjs 即可，无需另装 Node）。
+**直接安装预编译包（最简单）**：下载仓库 `release/` 目录下的 `substracker-v1.1.2.fpk`，在 fnOS 应用中心 → 手动安装 → 选择该文件即可。安装后桌面生成图标，访问端口 `36789`，默认账号 `admin` / `password`。运行时自动探测 Node 或 Bun（fnOS 应用中心的 bunjs 即可，无需另装 Node）。
 
 自行打包见 [fpk/README-FPK.md](fpk/README-FPK.md)：执行 `bash fpk/build-fpk.sh` 生成 fpk（需 fnpack CLI），安装后在 fnOS 桌面生成图标。
 

@@ -3270,6 +3270,10 @@ const configPage = `
           </div>
           <div class="mb-6">
             <label class="block text-sm font-medium text-gray-700 mb-3">通知方式（可多选）</label>
+            <div class="bg-amber-50 border border-amber-200 text-amber-800 rounded-md px-4 py-3 text-sm mb-4">
+              <p class="font-medium mb-1"><i class="fas fa-exclamation-triangle mr-1"></i>重要：定时提醒只会发送到下面<b>已勾选</b>的渠道</p>
+              <p>下方的「测试」按钮仅用于检测渠道配置是否正确，<b>不受勾选限制</b>——测试能收到、定时提醒却收不到，通常就是这里没勾选。修改后请记得点页面底部「保存配置」。</p>
+            </div>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label class="inline-flex items-center">
                 <input type="checkbox" name="enabledNotifiers" value="telegram" class="form-checkbox h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
@@ -3712,6 +3716,33 @@ const configPage = `
       const passwordField = document.getElementById('adminPassword');
       if (passwordField.value.trim()) {
         config.ADMIN_PASSWORD = passwordField.value.trim();
+      }
+
+      // 一致性校验：渠道填了配置却没勾选启用 —— 定时提醒不会走该渠道（测试按钮不受此限制）
+      const notifierChecks = [
+        { key: 'bark', label: 'Bark', filled: !!config.BARK_DEVICE_KEY },
+        { key: 'telegram', label: 'Telegram', filled: !!(config.TG_BOT_TOKEN && config.TG_CHAT_ID) },
+        { key: 'webhook', label: 'Webhook', filled: !!config.WEBHOOK_URL },
+        { key: 'wechatbot', label: '企业微信机器人', filled: !!config.WECHATBOT_WEBHOOK },
+        { key: 'email', label: '邮件', filled: !!(config.RESEND_API_KEY && config.EMAIL_TO) },
+        { key: 'notifyx', label: 'NotifyX', filled: !!config.NOTIFYX_API_KEY }
+      ];
+      const notEnabled = notifierChecks.filter(item => item.filled && !config.ENABLED_NOTIFIERS.includes(item.key));
+      if (notEnabled.length) {
+        const names = notEnabled.map(item => item.label).join('、');
+        const autoEnable = confirm('检测到「' + names + '」已经填写了配置，但没有在上方“通知方式”里勾选启用。\\n\\n定时提醒只会推送到已勾选的渠道，未勾选的渠道即使测试成功也收不到提醒。\\n\\n是否现在自动勾选启用「' + names + '」？');
+        if (autoEnable) {
+          notEnabled.forEach(item => {
+            if (!config.ENABLED_NOTIFIERS.includes(item.key)) {
+              config.ENABLED_NOTIFIERS.push(item.key);
+            }
+            const box = document.querySelector('input[name="enabledNotifiers"][value="' + item.key + '"]');
+            if (box) box.checked = true;
+            if (typeof toggleNotificationConfigs === 'function') {
+              toggleNotificationConfigs(config.ENABLED_NOTIFIERS);
+            }
+          });
+        }
       }
 
       const submitButton = e.target.querySelector('button[type="submit"]');
@@ -4206,6 +4237,11 @@ const dashboardPage = `<!DOCTYPE html>
             <div class="status-label">说明</div>
             <div class="status-value text-gray-500">日常提醒完全按你在「日常提醒」中设置的星期与时间<b>分钟级准点推送</b>（例如周一至周五 09:20，则每个工作日 09:20 推送），无需任何额外配置。「每日定时检查」仅用于<b>订阅到期检查</b>（检查订阅列表中即将到期的订阅并发送提醒），与日常提醒的推送时间无关。</div>
           </div>
+          <div class="status-card sm:col-span-2">
+            <div class="status-label">生效通知渠道 / 最近推送结果</div>
+            <div id="remChannelInfo" class="status-value">-</div>
+          </div>
+          <div id="remChannelTip" class="sm:col-span-2 hidden"></div>
         </div>
       </div>
     </div>
@@ -4322,6 +4358,32 @@ const dashboardPage = `<!DOCTYPE html>
         document.getElementById('remCountInfo').textContent = remTick
           ? remTick.checked + ' / ' + remTick.due + ' / ' + remTick.sent
           : '-';
+
+        // 生效渠道 + 最近推送结果：让"提醒到点却没收到"这类问题一眼可见
+        var CHANNEL_NAMES = {
+          telegram: 'Telegram', notifyx: 'NotifyX', webhook: 'Webhook',
+          wechatbot: '企业微信机器人', weixin: '企业微信', email: '邮件', bark: 'Bark'
+        };
+        var channelInfo = document.getElementById('remChannelInfo');
+        var channelTip = document.getElementById('remChannelTip');
+        var channels = (remTick && remTick.channels) || [];
+        var channelNames = channels.map(function(c) { return CHANNEL_NAMES[c.channel || c] || (c.channel || c); });
+        if (remTick) {
+          channelInfo.textContent = (channelNames.length ? channelNames.join('、') : '未启用任何渠道')
+            + (remTick.result ? '　｜　' + remTick.result : '');
+        } else {
+          channelInfo.textContent = '-';
+        }
+        if (!channelNames.length) {
+          channelTip.className = 'sm:col-span-2 bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-md px-4 py-3';
+          channelTip.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>当前<b>没有启用任何通知渠道</b>，提醒到点后不会推送到任何地方。请到「系统配置 → 通知渠道」勾选需要使用的渠道（例如 Bark）后保存。注意：配置页的「测试」按钮可以单独测试渠道，但定时推送只会走<b>已勾选启用</b>的渠道。';
+        } else if (remTick && remTick.sent === 0 && remTick.due > 0) {
+          channelTip.className = 'sm:col-span-2 bg-red-50 border border-red-200 text-red-800 text-sm rounded-md px-4 py-3';
+          channelTip.innerHTML = '<i class="fas fa-times-circle mr-2"></i>最近一次提醒推送<b>发送失败</b>（' + (remTick.result || '') + '）。系统会在 5 分钟后自动重试，请检查渠道配置是否正确。';
+        } else {
+          channelTip.className = 'sm:col-span-2 hidden';
+          channelTip.innerHTML = '';
+        }
       }).catch(function(err) {
         showToast('加载仪表盘数据失败: ' + err.message, 'error');
       });
@@ -4416,6 +4478,9 @@ const remindersPage = `<!DOCTYPE html>
         <i class="fas fa-plus mr-1"></i>新增提醒
       </button>
     </div>
+
+    <!-- 通知渠道状态（提醒到点收不到时，先看这里） -->
+    <div id="channelBanner" class="hidden mb-4 rounded-md px-4 py-3 text-sm"></div>
 
     <!-- 概览 -->
     <div class="grid grid-cols-3 gap-4 mb-6">
@@ -4626,6 +4691,30 @@ const remindersPage = `<!DOCTYPE html>
       }).catch(function() {});
     }
 
+    var CHANNEL_NAMES = {
+      telegram: 'Telegram', notifyx: 'NotifyX', webhook: 'Webhook',
+      wechatbot: '企业微信机器人', weixin: '企业微信', email: '邮件', bark: 'Bark'
+    };
+
+    // 顶部渠道状态条：提醒到点收不到时，第一眼就能看出是渠道没启用还是发送失败
+    function loadChannels() {
+      fetch('/api/config').then(function(r) { return r.json(); }).then(function(cfg) {
+        var list = (cfg && cfg.ENABLED_NOTIFIERS) || [];
+        var banner = document.getElementById('channelBanner');
+        var names = list.map(function(c) { return CHANNEL_NAMES[c] || c; });
+        if (!list.length) {
+          banner.className = 'mb-4 rounded-md px-4 py-3 text-sm bg-amber-50 border border-amber-200 text-amber-800';
+          banner.innerHTML = '<i class="fas fa-exclamation-triangle mr-2"></i>当前<b>未启用任何通知渠道</b>，提醒到点后不会推送到任何地方，请到'
+            + ' <a href="/admin/config" class="underline font-medium">系统配置 → 通知渠道</a> 勾选需要使用的渠道（例如 Bark）后保存。'
+            + '<br><span class="text-xs">提示：配置页的「测试」按钮可以单独测试渠道连通性，但定时推送只会走<b>已勾选启用</b>的渠道。</span>';
+        } else {
+          banner.className = 'mb-4 rounded-md px-4 py-3 text-sm bg-emerald-50 border border-emerald-200 text-emerald-800';
+          banner.innerHTML = '<i class="fas fa-check-circle mr-2"></i>提醒将推送到：<b>' + escapeHtml(names.join('、')) + '</b>'
+            + '<span class="text-xs ml-2">（前往 <a href="/admin/config" class="underline">系统配置</a> 可调整）</span>';
+        }
+      }).catch(function() {});
+    }
+
     function loadReminders() {
       fetch('/api/daily-reminders').then(function(r) { return r.json(); }).then(function(list) {
         allReminders = Array.isArray(list) ? list : [];
@@ -4673,6 +4762,10 @@ const remindersPage = `<!DOCTYPE html>
         var lastPush = r.lastNotifiedAt
           ? '<span class="text-xs text-gray-500">' + escapeHtml(new Date(r.lastNotifiedAt).toLocaleString('zh-CN')) + '</span>'
           : '<span class="text-xs text-gray-300">未推送过</span>';
+        if (r.lastResult === '发送失败') {
+          lastPush += '<div class="text-xs text-red-500 mt-1" title="' + escapeHtml(r.lastError || '') + '">'
+            + '<i class="fas fa-exclamation-circle mr-1"></i>上次发送失败</div>';
+        }
         var actions = '<div class="flex items-center justify-end space-x-2">'
           + '<button onclick="openModal(\\'' + r.id + '\\')" class="px-2 py-1 text-xs bg-indigo-50 text-indigo-600 rounded hover:bg-indigo-100" title="编辑"><i class="fas fa-edit"></i> 编辑</button>'
           + '<button onclick="deleteReminder(\\'' + r.id + '\\')" class="px-2 py-1 text-xs bg-red-50 text-red-600 rounded hover:bg-red-100" title="删除"><i class="fas fa-trash"></i> 删除</button>'
@@ -4815,6 +4908,7 @@ const remindersPage = `<!DOCTYPE html>
     document.getElementById('statusFilter').addEventListener('change', renderList);
     document.getElementById('weekdayFilter').addEventListener('change', renderList);
 
+    loadChannels();
     loadReminders();
   </script>
 </body>
@@ -4971,34 +5065,62 @@ async function checkDailyReminders(env) {
     const due = [];
     for (const r of reminders) {
       if (!r.enabled) continue;
-      if (r.lastNotifiedKey === dateKey) continue; // 当日已推送
-      if (r.type === 'once') {
-        if (r.onceDate === dateKey && nowMinutes >= parseHHMM(r.onceTime)) due.push(r);
-      } else if ((r.weekdays || []).includes(currentWeekday) && nowMinutes >= parseHHMM(r.reminderTime)) {
-        due.push(r);
-      }
+      if (r.lastNotifiedKey === dateKey) continue; // 当日已推送成功
+      const dueMinutes = r.type === 'once' ? parseHHMM(r.onceTime) : parseHHMM(r.reminderTime);
+      const matched = r.type === 'once'
+        ? (r.onceDate === dateKey && nowMinutes >= dueMinutes)
+        : ((r.weekdays || []).includes(currentWeekday) && nowMinutes >= dueMinutes);
+      if (!matched) continue;
+      // 上次发送失败后的重试冷却：同一提醒 5 分钟内不重复尝试，避免刷屏
+      if (r.lastAttemptAt && (currentTime.getTime() - Date.parse(r.lastAttemptAt)) < 5 * 60 * 1000) continue;
+      due.push(r);
     }
 
     const runState = await getRunState(env);
+    const enabledChannels = config?.ENABLED_NOTIFIERS || [];
     runState.reminderTick = {
       at: currentTime.toISOString(),
       timezone,
       checked: reminders.length,
       due: due.length,
-      sent: 0
+      sent: 0,
+      channels: enabledChannels,
+      result: '无待推送提醒'
     };
 
     if (due.length > 0) {
       const content = formatDailyReminderContent(due);
-      await sendNotificationToAllChannels('日常提醒', content, config, '[日常提醒]');
-      runState.reminderTick.sent = due.length;
+      const results = [];
+      await sendNotificationToAllChannels('日常提醒', content, config, '[日常提醒]', { results });
+      const succeeded = results.some((item) => item.success);
+      runState.reminderTick.channels = results.length ? results : enabledChannels;
+      runState.reminderTick.result = succeeded
+        ? '已推送成功'
+        : (enabledChannels.length === 0 ? '未启用任何通知渠道' : '全部渠道发送失败');
+
       for (const r of due) {
-        r.lastNotifiedKey = dateKey;
-        r.lastNotifiedAt = currentTime.toISOString();
-        if (r.type === 'once') r.enabled = false; // 一次性提醒推送后自动停用
+        r.lastAttemptAt = currentTime.toISOString();
+        if (succeeded) {
+          r.lastNotifiedKey = dateKey;
+          r.lastNotifiedAt = currentTime.toISOString();
+          r.lastResult = '已推送';
+          delete r.lastError;
+          if (r.type === 'once') r.enabled = false; // 一次性提醒推送成功后自动停用
+        } else {
+          // 发送失败：不标记已推送、不停用（一次性提醒保留待重试），并记录原因供界面展示
+          r.lastResult = '发送失败';
+          r.lastError = enabledChannels.length === 0
+            ? '未启用任何通知渠道，请到「系统配置 - 通知渠道」勾选需要使用的渠道'
+            : '通知渠道发送失败，请检查渠道配置（如 Bark 服务器地址、设备 Key）';
+        }
       }
       await saveDailyReminders(env, reminders);
-      console.log('[日常提醒] 已推送 ' + due.length + ' 条提醒');
+      if (succeeded) {
+        runState.reminderTick.sent = due.length;
+        console.log('[日常提醒] 已推送 ' + due.length + ' 条提醒');
+      } else {
+        console.warn('[日常提醒] ' + due.length + ' 条提醒发送失败：' + runState.reminderTick.result + '（将在 5 分钟后重试）');
+      }
     }
     await saveRunState(env, runState);
   } catch (error) {
@@ -6334,8 +6456,12 @@ ${reminderText}
 
 async function sendNotificationToAllChannels(title, commonContent, config, logPrefix = '[定时任务]', options = {}) {
   const metadata = options.metadata || {};
+  // 可选：把每个渠道的发送结果回传给调用方（日常提醒会记录到运行状态里）
+  const results = options.results || null;
+  const record = (channel, success) => { if (results) results.push({ channel, success }); };
+
     if (!config.ENABLED_NOTIFIERS || config.ENABLED_NOTIFIERS.length === 0) {
-        console.log(`${logPrefix} 未启用任何通知渠道。`);
+        console.log(`${logPrefix} 未启用任何通知渠道。请在「系统配置 - 通知渠道」中勾选需要使用的渠道。`);
         return;
     }
 
@@ -6343,36 +6469,43 @@ async function sendNotificationToAllChannels(title, commonContent, config, logPr
         const notifyxContent = `## ${title}\n\n${commonContent}`;
         const success = await sendNotifyXNotification(title, notifyxContent, `订阅提醒`, config);
         console.log(`${logPrefix} 发送NotifyX通知 ${success ? '成功' : '失败'}`);
+        record('notifyx', success);
     }
     if (config.ENABLED_NOTIFIERS.includes('telegram')) {
         const telegramContent = `*${title}*\n\n${commonContent}`;
         const success = await sendTelegramNotification(telegramContent, config);
         console.log(`${logPrefix} 发送Telegram通知 ${success ? '成功' : '失败'}`);
+        record('telegram', success);
     }
     if (config.ENABLED_NOTIFIERS.includes('webhook')) {
         const webhookContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
         const success = await sendWebhookNotification(title, webhookContent, config, metadata);
         console.log(`${logPrefix} 发送Webhook通知 ${success ? '成功' : '失败'}`);
+        record('webhook', success);
     }
     if (config.ENABLED_NOTIFIERS.includes('wechatbot')) {
         const wechatbotContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
         const success = await sendWechatBotNotification(title, wechatbotContent, config);
         console.log(`${logPrefix} 发送企业微信机器人通知 ${success ? '成功' : '失败'}`);
+        record('wechatbot', success);
     }
     if (config.ENABLED_NOTIFIERS.includes('weixin')) {
         const weixinContent = `【${title}】\n\n${commonContent.replace(/(\**|\*|##|#|`)/g, '')}`;
         const result = await sendWeComNotification(weixinContent, config);
         console.log(`${logPrefix} 发送企业微信通知 ${result.success ? '成功' : '失败'}. ${result.message}`);
+        record('weixin', result.success);
     }
     if (config.ENABLED_NOTIFIERS.includes('email')) {
         const emailContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
         const success = await sendEmailNotification(title, emailContent, config);
         console.log(`${logPrefix} 发送邮件通知 ${success ? '成功' : '失败'}`);
+        record('email', success);
     }
     if (config.ENABLED_NOTIFIERS.includes('bark')) {
         const barkContent = commonContent.replace(/(\**|\*|##|#|`)/g, '');
         const success = await sendBarkNotification(title, barkContent, config);
         console.log(`${logPrefix} 发送Bark通知 ${success ? '成功' : '失败'}`);
+        record('bark', success);
     }
 }
 

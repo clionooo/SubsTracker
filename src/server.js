@@ -29,6 +29,28 @@ const env = {
 const worker = (await import('../index.js')).default;
 const ctx = { waitUntil: () => {}, passThroughOnException: () => {} };
 
+// ---------- 时区自动校准 ----------
+// 原版默认时区为 UTC，本地/NAS 部署时会与系统时间相差一个时区（如 +8 小时），
+// 导致日常提醒的推送时间与用户设置不符。这里在启动时把系统时区写入配置。
+const ENV_TIMEZONE = process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone;
+async function syncTimezone() {
+  if (!ENV_TIMEZONE || ENV_TIMEZONE === 'UTC') return null;
+  try {
+    const raw = await env.SUBSCRIPTIONS_KV.get('config');
+    const config = raw ? JSON.parse(raw) : {};
+    const current = config.TIMEZONE;
+    if (current && current !== 'UTC') return current; // 已显式设置，尊重用户选择
+    config.TIMEZONE = ENV_TIMEZONE;
+    await env.SUBSCRIPTIONS_KV.put('config', JSON.stringify(config));
+    console.log(`[时区] 配置时区已自动校准：${current || '(未设置)'} -> ${ENV_TIMEZONE}`);
+    return ENV_TIMEZONE;
+  } catch (err) {
+    console.error('[时区] 自动校准失败:', err);
+    return null;
+  }
+}
+const ACTIVE_TIMEZONE = (await syncTimezone()) || ENV_TIMEZONE || 'UTC';
+
 // ---------- Worker Request 适配 ----------
 function readBody(req) {
   return new Promise((resolve, reject) => {
