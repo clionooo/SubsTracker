@@ -5000,6 +5000,13 @@ async function updateDailyReminder(id, input, env) {
   if (index === -1) return { success: false, message: '提醒不存在' };
   const merged = sanitizeDailyReminder({ ...reminders[index], ...input, id: reminders[index].id, createdAt: reminders[index].createdAt });
   if (!merged) return { success: false, message: '参数不完整' };
+  // 编辑（改时间/内容/重新启用）后视为一条新计划：清除历史推送状态，否则
+  // "当日已推送"的旧标记会让定时检查永久跳过这条提醒
+  delete merged.lastNotifiedKey;
+  delete merged.lastNotifiedAt;
+  delete merged.lastResult;
+  delete merged.lastError;
+  delete merged.lastAttemptAt;
   reminders[index] = merged;
   await saveDailyReminders(env, reminders);
   return { success: true, reminder: merged };
@@ -5019,6 +5026,14 @@ async function toggleDailyReminder(id, enabled, env) {
   if (!target) return { success: false, message: '提醒不存在' };
   target.enabled = enabled !== false;
   target.updatedAt = new Date().toISOString();
+  // 重新启用时清除历史推送状态，确保重新参与定时推送
+  if (target.enabled) {
+    delete target.lastNotifiedKey;
+    delete target.lastNotifiedAt;
+    delete target.lastResult;
+    delete target.lastError;
+    delete target.lastAttemptAt;
+  }
   await saveDailyReminders(env, reminders);
   return { success: true, reminder: target };
 }
